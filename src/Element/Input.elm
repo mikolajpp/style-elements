@@ -24,6 +24,7 @@ module Element.Input
           -- , cellWith
         , currentPassword
         , disabled
+        , changeDisabled
         , dropMenu
         , email
         , errorAbove
@@ -84,7 +85,7 @@ The following text inputs give hints to the browser so they can be autofilled.
 
 ## Options
 
-@docs Option, errorAbove, errorBelow, disabled, focusOnLoad, autofill, autofillSection, allowSpellcheck
+@docs Option, errorAbove, errorBelow, disabled, changeDisabled, focusOnLoad, autofill, autofillSection, allowSpellcheck
 
 -}
 
@@ -194,10 +195,13 @@ addOptionsAsAttrs options attrs =
                 Disabled ->
                     attrs
 
+                ChangeDisabled ->
+                    attrs
+
                 ErrorOpt _ ->
                     attrs
     in
-    List.foldr renderOption attrs options
+        List.foldr renderOption attrs options
 
 
 {-| -}
@@ -249,6 +253,9 @@ checkbox style attrs input =
         isDisabled =
             List.any ((==) Disabled) input.options
 
+        isChangeDisabled =
+            List.any ((==) Disabled) input.options
+
         inputElem =
             [ Internal.Element
                 { node = "input"
@@ -264,7 +271,7 @@ checkbox style attrs input =
                 }
             ]
     in
-    applyLabel Nothing Nothing (Attr.spacing 5 :: Attr.verticalCenter :: attrs) (LabelOnRight input.label) errs isDisabled True inputElem
+        applyLabel Nothing Nothing (Attr.spacing 5 :: Attr.verticalCenter :: attrs) (LabelOnRight input.label) errs isDisabled True inputElem
 
 
 {-| -}
@@ -348,7 +355,7 @@ styledCheckbox style attrs input =
                 |> Modify.addAttr (Attr.toAttr <| Html.Attributes.class "alt-icon")
             ]
     in
-    applyLabel Nothing Nothing (Attr.spacing 5 :: Attr.verticalCenter :: attrs) (LabelOnRight input.label) errs isDisabled True inputElem
+        applyLabel Nothing Nothing (Attr.spacing 5 :: Attr.verticalCenter :: attrs) (LabelOnRight input.label) errs isDisabled True inputElem
 
 
 
@@ -511,6 +518,9 @@ textHelper kind addedOptions style attrs input =
         isDisabled =
             List.any ((==) Disabled) options
 
+        isChangeDisabled =
+            List.any ((==) ChangeDisabled) options
+
         kindAsText =
             case kind of
                 Plain ->
@@ -541,7 +551,12 @@ textHelper kind addedOptions style attrs input =
                         { node = "textarea"
                         , style = Just style
                         , attrs =
-                            (Internal.Width (Style.Fill 1) :: Attr.inlineStyle [ ( "resize", "none" ) ] :: Events.onInput input.onChange :: textValueAttr input.value :: attrs)
+                            (if isChangeDisabled then
+                                []
+                             else
+                                [ Events.onInput input.onChange ]
+                            )
+                                ++ (Internal.Width (Style.Fill 1) :: Attr.inlineStyle [ ( "resize", "none" ) ] :: textValueAttr input.value :: attrs)
                                 |> (withPlaceholder >> withReadonly >> withError >> withSpellCheck >> addOptionsAsAttrs options)
                         , child =
                             Internal.Text
@@ -557,13 +572,18 @@ textHelper kind addedOptions style attrs input =
                         { node = "input"
                         , style = Just style
                         , attrs =
-                            (Internal.Width (Style.Fill 1) :: type_ kindAsText :: Events.onInput input.onChange :: textValueAttr input.value :: attrs)
+                            (if isChangeDisabled then
+                                []
+                             else
+                                [ Events.onInput input.onChange ]
+                            )
+                                ++ (Internal.Width (Style.Fill 1) :: type_ kindAsText :: textValueAttr input.value :: attrs)
                                 |> (withPlaceholder >> withDisabled >> withError >> addOptionsAsAttrs options)
                         , child = Internal.Empty
                         , absolutelyPositioned = Nothing
                         }
     in
-    applyLabel key Nothing [ spacing ] input.label errors isDisabled False [ inputElem ]
+        applyLabel key Nothing [ spacing ] input.label errors isDisabled False [ inputElem ]
 
 
 {-| -}
@@ -579,6 +599,7 @@ type alias Text style variation msg =
 type Option style variation msg
     = ErrorOpt (Error style variation msg)
     | Disabled
+    | ChangeDisabled
     | FocusOnLoad
     | AutoFill String
     | SpellCheck
@@ -620,6 +641,18 @@ disabled =
     Disabled
 
 
+{-| Disable onChange event handler. This is necesarry if the
+user wants to have his own custom "input" event handler.
+
+    Attempting to supply on "input" event handler without this option enabled
+    will fail; The event will be captured by the onChange handler.
+
+-}
+changeDisabled : Option style variation msg
+changeDisabled =
+    ChangeDisabled
+
+
 {-| This key is needed because of the fix that is used to address [the cursor jumping bug](https://github.com/mdgriffith/style-elements/issues/91).
 
 Style Elements renders a text input using `defaultValue`, but if the value changes in your model, but not as a result of the input `onChange` event, then your input and model will get out of sync.
@@ -655,6 +688,7 @@ type Error style variation msg
     | ErrorAbove (Element style variation msg)
 
 
+{-| -}
 type Label style variation msg
     = LabelBelow (Element style variation msg)
     | LabelAbove (Element style variation msg)
@@ -877,85 +911,85 @@ applyLabel maybeKey style attrs label errors isDisabled hasPointer input =
                 , absolutelyPositioned = Nothing
                 }
     in
-    case label of
-        PlaceHolder placeholder newLabel ->
-            -- placeholder is set in a previous function
-            applyLabel maybeKey style attrs newLabel errors isDisabled hasPointer input
+        case label of
+            PlaceHolder placeholder newLabel ->
+                -- placeholder is set in a previous function
+                applyLabel maybeKey style attrs newLabel errors isDisabled hasPointer input
 
-        HiddenLabel title ->
-            let
-                labeledInput =
-                    input
-                        |> List.map (Modify.addAttr (Attr.attribute "title" title))
-            in
-            case orientedErrors of
-                Nothing ->
-                    labelContainer Style.Down labeledInput
+            HiddenLabel title ->
+                let
+                    labeledInput =
+                        input
+                            |> List.map (Modify.addAttr (Attr.attribute "title" title))
+                in
+                    case orientedErrors of
+                        Nothing ->
+                            labelContainer Style.Down labeledInput
 
-                Just (ErrorAllAbove above) ->
-                    labelContainer Style.Down (orient Style.GoRight above :: labeledInput)
+                        Just (ErrorAllAbove above) ->
+                            labelContainer Style.Down (orient Style.GoRight above :: labeledInput)
 
-                Just (ErrorAllBelow below) ->
-                    labelContainer Style.Down (labeledInput ++ [ orient Style.GoRight below ])
+                        Just (ErrorAllBelow below) ->
+                            labelContainer Style.Down (labeledInput ++ [ orient Style.GoRight below ])
 
-                Just (ErrorAboveBelow above below) ->
-                    labelContainer Style.Down (orient Style.GoRight above :: labeledInput ++ [ orient Style.GoRight below ])
+                        Just (ErrorAboveBelow above below) ->
+                            labelContainer Style.Down (orient Style.GoRight above :: labeledInput ++ [ orient Style.GoRight below ])
 
-        LabelAbove lab ->
-            case orientedErrors of
-                Nothing ->
-                    labelContainer Style.Down (lab :: input)
+            LabelAbove lab ->
+                case orientedErrors of
+                    Nothing ->
+                        labelContainer Style.Down (lab :: input)
 
-                Just (ErrorAllAbove above) ->
-                    labelContainer Style.Down (orient Style.GoRight (lab :: above) :: input)
+                    Just (ErrorAllAbove above) ->
+                        labelContainer Style.Down (orient Style.GoRight (lab :: above) :: input)
 
-                Just (ErrorAllBelow below) ->
-                    labelContainer Style.Down (lab :: input ++ [ orient Style.GoRight below ])
+                    Just (ErrorAllBelow below) ->
+                        labelContainer Style.Down (lab :: input ++ [ orient Style.GoRight below ])
 
-                Just (ErrorAboveBelow above below) ->
-                    labelContainer Style.Down (orient Style.GoRight (lab :: above) :: input ++ [ orient Style.GoRight below ])
+                    Just (ErrorAboveBelow above below) ->
+                        labelContainer Style.Down (orient Style.GoRight (lab :: above) :: input ++ [ orient Style.GoRight below ])
 
-        LabelBelow lab ->
-            case orientedErrors of
-                Nothing ->
-                    labelContainer Style.Down (input ++ [ lab ])
+            LabelBelow lab ->
+                case orientedErrors of
+                    Nothing ->
+                        labelContainer Style.Down (input ++ [ lab ])
 
-                Just (ErrorAllAbove above) ->
-                    labelContainer Style.Down (orient Style.GoRight above :: input ++ [ lab ])
+                    Just (ErrorAllAbove above) ->
+                        labelContainer Style.Down (orient Style.GoRight above :: input ++ [ lab ])
 
-                Just (ErrorAllBelow below) ->
-                    labelContainer Style.Down (input ++ [ orient Style.GoRight (lab :: below) ])
+                    Just (ErrorAllBelow below) ->
+                        labelContainer Style.Down (input ++ [ orient Style.GoRight (lab :: below) ])
 
-                Just (ErrorAboveBelow above below) ->
-                    labelContainer Style.Down (orient Style.GoRight above :: input ++ [ orient Style.GoRight (lab :: below) ])
+                    Just (ErrorAboveBelow above below) ->
+                        labelContainer Style.Down (orient Style.GoRight above :: input ++ [ orient Style.GoRight (lab :: below) ])
 
-        LabelOnRight lab ->
-            case orientedErrors of
-                Nothing ->
-                    labelContainer Style.GoRight (input ++ [ lab ])
+            LabelOnRight lab ->
+                case orientedErrors of
+                    Nothing ->
+                        labelContainer Style.GoRight (input ++ [ lab ])
 
-                Just (ErrorAllAbove above) ->
-                    labelContainer Style.Down (above ++ [ orient Style.GoRight (input ++ [ lab ]) ])
+                    Just (ErrorAllAbove above) ->
+                        labelContainer Style.Down (above ++ [ orient Style.GoRight (input ++ [ lab ]) ])
 
-                Just (ErrorAllBelow below) ->
-                    labelContainer Style.Down (orient Style.GoRight (input ++ [ lab ]) :: below)
+                    Just (ErrorAllBelow below) ->
+                        labelContainer Style.Down (orient Style.GoRight (input ++ [ lab ]) :: below)
 
-                Just (ErrorAboveBelow above below) ->
-                    labelContainer Style.Down (above ++ [ orient Style.GoRight (input ++ [ lab ]) ] ++ below)
+                    Just (ErrorAboveBelow above below) ->
+                        labelContainer Style.Down (above ++ [ orient Style.GoRight (input ++ [ lab ]) ] ++ below)
 
-        LabelOnLeft lab ->
-            case orientedErrors of
-                Nothing ->
-                    labelContainer Style.GoRight (lab :: input)
+            LabelOnLeft lab ->
+                case orientedErrors of
+                    Nothing ->
+                        labelContainer Style.GoRight (lab :: input)
 
-                Just (ErrorAllAbove above) ->
-                    labelContainer Style.Down (above ++ [ orient Style.GoRight (lab :: input) ])
+                    Just (ErrorAllAbove above) ->
+                        labelContainer Style.Down (above ++ [ orient Style.GoRight (lab :: input) ])
 
-                Just (ErrorAllBelow below) ->
-                    labelContainer Style.Down (orient Style.GoRight (lab :: input) :: below)
+                    Just (ErrorAllBelow below) ->
+                        labelContainer Style.Down (orient Style.GoRight (lab :: input) :: below)
 
-                Just (ErrorAboveBelow above below) ->
-                    labelContainer Style.Down (above ++ [ orient Style.GoRight (lab :: input) ] ++ below)
+                    Just (ErrorAboveBelow above below) ->
+                        labelContainer Style.Down (above ++ [ orient Style.GoRight (lab :: input) ] ++ below)
 
 
 
@@ -1001,7 +1035,7 @@ styledChoice value selected =
                 Idle ->
                     selected False
     in
-    ChoiceWith value choose
+        ChoiceWith value choose
 
 
 {-| -}
@@ -1056,7 +1090,6 @@ type alias Radio option style variation msg =
             , Input.choice Gyro (text "Gyro")
             ]
         }
-
 -}
 radio : style -> List (Attribute variation msg) -> Radio option style variation msg -> Element style variation msg
 radio style attrs input =
@@ -1108,7 +1141,7 @@ radio style attrs input =
                         Just key
                 }
     in
-    applyLabel Nothing Nothing [] input.label errs isDisabled (not isDisabled) [ inputElem ]
+        applyLabel Nothing Nothing [] input.label errs isDisabled (not isDisabled) [ inputElem ]
 
 
 {-| Same as `radio`, but arranges the choices in a row instead of a column
@@ -1163,7 +1196,7 @@ radioRow style attrs config =
                         Just key
                 }
     in
-    applyLabel Nothing Nothing [] config.label errs isDisabled (not isDisabled) [ input ]
+        applyLabel Nothing Nothing [] config.label errs isDisabled (not isDisabled) [ input ]
 
 
 
@@ -1282,25 +1315,25 @@ radioHelper orientation style attrs config =
                         isSelected =
                             Just val == single.selected
                     in
-                    if isSelected then
-                        [ checked True
-                        ]
-                    else
-                        [ checked False
-                        , Events.onCheck (\_ -> single.onChange val)
-                        ]
+                        if isSelected then
+                            [ checked True
+                            ]
+                        else
+                            [ checked False
+                            , Events.onCheck (\_ -> single.onChange val)
+                            ]
 
                 Multi multi ->
                     let
                         isSelected =
                             List.member val multi.selected
                     in
-                    [ checked isSelected
-                    , if isSelected then
-                        Events.onCheck (\_ -> multi.onChange (List.filter (\item -> item /= val) multi.selected))
-                      else
-                        Events.onCheck (\_ -> multi.onChange (val :: multi.selected))
-                    ]
+                        [ checked isSelected
+                        , if isSelected then
+                            Events.onCheck (\_ -> multi.onChange (List.filter (\item -> item /= val) multi.selected))
+                          else
+                            Events.onCheck (\_ -> multi.onChange (val :: multi.selected))
+                        ]
 
         renderOption option =
             case option of
@@ -1334,18 +1367,18 @@ radioHelper orientation style attrs config =
                                 |> Modify.removeAllAttrs
                                 |> Modify.removeStyle
                     in
-                    Internal.Layout
-                        { node = "label"
-                        , style = Modify.getStyle el
-                        , layout = Style.FlexLayout Style.GoRight []
-                        , attrs =
-                            if config.disabled then
-                                Attr.spacing 5 :: Modify.getAttrs el
-                            else
-                                pointer :: Attr.spacing 5 :: Modify.getAttrs el
-                        , children = Internal.Normal [ input, literalLabel ]
-                        , absolutelyPositioned = Nothing
-                        }
+                        Internal.Layout
+                            { node = "label"
+                            , style = Modify.getStyle el
+                            , layout = Style.FlexLayout Style.GoRight []
+                            , attrs =
+                                if config.disabled then
+                                    Attr.spacing 5 :: Modify.getAttrs el
+                                else
+                                    pointer :: Attr.spacing 5 :: Modify.getAttrs el
+                            , children = Internal.Normal [ input, literalLabel ]
+                            , absolutelyPositioned = Nothing
+                            }
 
                 ChoiceWith val view ->
                     let
@@ -1380,32 +1413,32 @@ radioHelper orientation style attrs config =
                                 , absolutelyPositioned = Nothing
                                 }
                     in
-                    Internal.Layout
-                        { node = "label"
-                        , style = Modify.getStyle viewed
-                        , layout = Style.FlexLayout Style.GoRight []
-                        , attrs =
-                            if config.disabled then
-                                Attr.spacing 5 :: Modify.getAttrs viewed
-                            else
-                                pointer :: Attr.spacing 5 :: Modify.getAttrs viewed
-                        , children =
-                            Internal.Normal
-                                [ hiddenInput
-                                , viewed
-                                    |> Modify.removeAllAttrs
-                                    |> Modify.addAttr (Attr.toAttr <| Html.Attributes.class "alt-icon")
-                                    |> Modify.removeStyle
-                                ]
-                        , absolutelyPositioned = Nothing
-                        }
+                        Internal.Layout
+                            { node = "label"
+                            , style = Modify.getStyle viewed
+                            , layout = Style.FlexLayout Style.GoRight []
+                            , attrs =
+                                if config.disabled then
+                                    Attr.spacing 5 :: Modify.getAttrs viewed
+                                else
+                                    pointer :: Attr.spacing 5 :: Modify.getAttrs viewed
+                            , children =
+                                Internal.Normal
+                                    [ hiddenInput
+                                    , viewed
+                                        |> Modify.removeAllAttrs
+                                        |> Modify.addAttr (Attr.toAttr <| Html.Attributes.class "alt-icon")
+                                        |> Modify.removeStyle
+                                    ]
+                            , absolutelyPositioned = Nothing
+                            }
     in
-    case orientation of
-        Horizontal ->
-            row style (Attr.spacing 10 :: attrs) (List.map renderOption config.choices)
+        case orientation of
+            Horizontal ->
+                row style (Attr.spacing 10 :: attrs) (List.map renderOption config.choices)
 
-        Vertical ->
-            column style (Attr.spacing 10 :: attrs) (List.map renderOption config.choices)
+            Vertical ->
+                column style (Attr.spacing 10 :: attrs) (List.map renderOption config.choices)
 
 
 arrows : Element a variation msg
@@ -1719,13 +1752,13 @@ selectMenu style attrs input =
                         last =
                             Just <| getOptionValue option
                     in
-                    { cache
-                        | next = next
-                        , found = found
-                        , prev = prev
-                        , first = first
-                        , last = last
-                    }
+                        { cache
+                            | next = next
+                            , found = found
+                            , prev = prev
+                            , first = first
+                            , last = last
+                        }
                 )
                 { selected = input.selected
                 , found = False
@@ -1776,8 +1809,8 @@ selectMenu style attrs input =
                                     :: Attr.attribute "role" "menuitemradio"
                                     :: isSelected
                     in
-                    el
-                        |> Modify.addAttrList additional
+                        el
+                            |> Modify.addAttrList additional
 
                 ChoiceWith val view ->
                     let
@@ -1805,8 +1838,8 @@ selectMenu style attrs input =
                             else
                                 Idle
                     in
-                    view viewState
-                        |> Modify.addAttrList additional
+                        view viewState
+                            |> Modify.addAttrList additional
 
         fullElement =
             Internal.Element
@@ -1893,7 +1926,7 @@ selectMenu style attrs input =
                         []
                     )
     in
-    applyLabel Nothing Nothing attrsWithSpacing input.label errors isDisabled (not isDisabled) [ fullElement ]
+        applyLabel Nothing Nothing attrsWithSpacing input.label errors isDisabled (not isDisabled) [ fullElement ]
 
 
 {-| -}
@@ -2133,7 +2166,6 @@ defaultPadding ( mW, mX, mY, mZ ) ( w, x, y, z ) =
     selection is made
         -> clear query
         -> Overlay selection on search area
-
 -}
 searchSelect : style -> List (Attribute variation msg) -> SearchMenu option style variation msg -> Element style variation msg
 searchSelect style attrs input =
@@ -2257,13 +2289,13 @@ searchSelect style attrs input =
                         last =
                             Just <| getOptionValue option
                     in
-                    { cache
-                        | next = next
-                        , found = found
-                        , prev = prev
-                        , first = first
-                        , last = last
-                    }
+                        { cache
+                            | next = next
+                            , found = found
+                            , prev = prev
+                            , first = first
+                            , last = last
+                        }
                 )
                 { selected = input.focus
                 , found = False
@@ -2342,8 +2374,8 @@ searchSelect style attrs input =
                                     :: Attr.attribute "role" "menuitemradio"
                                     :: isSelected
                     in
-                    el
-                        |> Modify.addAttrList additional
+                        el
+                            |> Modify.addAttrList additional
 
                 ChoiceWith val view ->
                     let
@@ -2381,8 +2413,8 @@ searchSelect style attrs input =
                             else
                                 Idle
                     in
-                    view selectedState
-                        |> Modify.addAttrList additional
+                        view selectedState
+                            |> Modify.addAttrList additional
 
         matches =
             choices
@@ -2543,7 +2575,7 @@ searchSelect style attrs input =
                         []
                     )
     in
-    applyLabel Nothing Nothing ([ Attr.inlineStyle [ ( "cursor", "auto" ) ] ] ++ attrsWithSpacing) input.label errors isDisabled False [ fullElement ]
+        applyLabel Nothing Nothing ([ Attr.inlineStyle [ ( "cursor", "auto" ) ] ] ++ attrsWithSpacing) input.label errors isDisabled False [ fullElement ]
 
 
 {-| -}
@@ -2619,7 +2651,7 @@ onKey desiredCode msg =
             Json.field "which" Json.int
                 |> Json.andThen decode
     in
-    Events.on "keydown" isKey
+        Events.on "keydown" isKey
 
 
 {-| -}
@@ -2638,7 +2670,7 @@ onKeyLookup lookup =
             Json.field "which" Json.int
                 |> Json.andThen decode
     in
-    Events.on "keydown" isKey
+        Events.on "keydown" isKey
 
 
 {-| -}
